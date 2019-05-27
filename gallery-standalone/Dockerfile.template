@@ -1,0 +1,20 @@
+FROM mcr.microsoft.com/dotnet/framework/aspnet:4.6.2
+
+WORKDIR /install
+ADD https://download.microsoft.com/download/C/9/E/C9E8180D-4E51-40A6-A9BF-776990D8BCA9/rewrite_amd64.msi rewrite_amd64.msi
+COPY in/NuGetGallery/ /inetpub/wwwroot
+COPY in/cert.pfx cert.pfx
+
+RUN Start-Process msiexec.exe -ArgumentList '/i', 'rewrite_amd64.msi', '/quiet', '/norestart' -NoNewWindow -Wait; \
+    Remove-Item .\rewrite_amd64.msi; \
+    Get-Acl c:\inetpub\wwwroot\App_Data | Set-Acl c:\inetpub\wwwroot\App_Data; \
+    $acl = Get-Acl c:\inetpub\wwwroot\App_Data; \
+    $inh = [System.Security.AccessControl.InheritanceFlags]::ContainerInherit -bor [System.Security.AccessControl.InheritanceFlags]::ObjectInherit; \
+    $fullc = New-Object System.Security.AccessControl.FileSystemAccessRule('BUILTIN\IIS_IUSRS', 'FullControl', $inh, 'None', 'Allow'); \
+    $acl.SetAccessRule($fullc); \
+    Set-Acl c:\inetpub\wwwroot\App_Data $acl; \
+    $pwd = '<certificatePassword>' | ConvertTo-SecureString -AsPlainText -Force; \
+    Import-PfxCertificate -Password $pwd -CertStoreLocation Cert:\LocalMachine\My -FilePath .\cert.pfx; \
+    New-WebBinding -Name 'Default Web Site' -IPAddress '*' -Port 443 -Protocol 'https'; \
+    $binding = Get-WebBinding -Port 443; \
+    $binding.AddSslCertificate('<certificateThumbprint>', 'My');
